@@ -467,7 +467,8 @@ class ProgressManager:
             
             # Reset progress
             self.progress = {
-                "completed": {}
+                "completed": {},
+                "hints_used": {}  # Add hints_used to reset
             }
             
             # Save the reset data
@@ -481,3 +482,63 @@ class ProgressManager:
             logger.error(f"Error resetting progress: {str(e)}")
             return False
         
+
+    def mark_hint_used(self, module, difficulty, topic, question):
+        """
+        Mark a hint as used for a specific question.
+        
+        Args:
+            module (str): The module name
+            difficulty (str): The difficulty level, or None for modules without difficulties
+            topic (str): The topic name
+            question (str): The question file name
+            
+        Returns:
+            bool: True if successfully marked, False otherwise
+        """
+        if not module or not topic or not question:
+            logger.error("Cannot mark hint usage with missing parameters")
+            return False
+        
+        try:
+            # Create a unique key for this question
+            key = self._create_question_key(module, difficulty, topic, question)
+            
+            # Initialize hints_used dict if needed
+            if "hints_used" not in self.progress:
+                self.progress["hints_used"] = {}
+            
+            # Mark as used
+            self.progress["hints_used"][key] = True
+            
+            # Save the updated progress
+            self._save_progress()
+            
+            logger.debug(f"Marked hint used for question: {key}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error marking hint used: {str(e)}")
+            return False
+        
+    def is_hint_used(self, module, difficulty, topic, question):
+        """
+        Check if a hint has been used for a question.
+        
+        Args:
+            module (str): The module name
+            difficulty (str): The difficulty level, or None for modules without difficulties
+            topic (str): The topic name
+            question (str): The question file name
+            
+        Returns:
+            bool: True if the hint has been used, False otherwise
+        """
+        if not module or not topic or not question:
+            return False
+        
+        # Create a unique key for this question
+        key = self._create_question_key(module, difficulty, topic, question)
+        
+        # Check if it's in the hints_used dict
+        return self.progress.get("hints_used", {}).get(key, False)

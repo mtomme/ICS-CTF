@@ -1253,32 +1253,76 @@ class CTFApplication(QMainWindow):
         """
         Show a hint for the specified question.
         
+        This function shows the hint with appropriate handling:
+        - For first-time hint viewing: Shows confirmation popup with penalty information
+        - For repeat hint viewing: Shows hint directly without confirmation or penalties
+        
         Args:
             question_file (str): The question file name
         """
-        # Get hint content
-        hint_content = self.paths.get_hint_content(
+        # Check if this hint has been used before
+        hint_previously_used = self.progress.is_hint_used(
             self.current_module,
             self.current_difficulty,
             self.current_topic,
             question_file
         )
         
-        if hint_content:
-            # Apply penalty based on difficulty level
-            if self.current_difficulty == "Intermediate":
-                # Record one incorrect attempt
-                self.progress.record_attempt(
-                    self.current_module,
-                    self.current_difficulty,
-                    self.current_topic,
-                    question_file,
-                    False
-                )
-                hint_title = "Hint (Counts as 1 incorrect attempt)"
-            elif self.current_difficulty == "Advanced":
-                # Record three incorrect attempts
-                for _ in range(3):
+        # If hint was previously used, show it directly without confirmation
+        if hint_previously_used:
+            # Get hint content
+            hint_content = self.paths.get_hint_content(
+                self.current_module,
+                self.current_difficulty,
+                self.current_topic,
+                question_file
+            )
+            
+            if hint_content:
+                # Show hint with "Previously Used" indicator
+                QMessageBox.information(self, "Hint (Previously Used)", hint_content)
+            else:
+                QMessageBox.information(self, "Hint", "No hint available for this question.")
+            
+            return  # Exit the function early, no need for confirmation
+        
+        # For first-time hint usage, show confirmation with penalty information
+        penalty_message = ""
+        if self.current_difficulty == "Intermediate":
+            penalty_message = "Using a hint for Intermediate difficulty will count as 1 incorrect attempt."
+        elif self.current_difficulty == "Advanced":
+            penalty_message = "Using a hint for Advanced difficulty will count as 3 incorrect attempts."
+        elif self.current_difficulty == "Beginner":
+            penalty_message = "Hints for Beginner difficulty have no accuracy penalty."
+        
+        # Create the confirmation message
+        confirm_message = f"Do you want to use a hint for this question?\n\n{penalty_message}"
+        
+        # Show confirmation dialog
+        from PyQt5.QtWidgets import QMessageBox
+        reply = QMessageBox.question(
+            self, "Confirm Hint Usage", 
+            confirm_message,
+            QMessageBox.Yes | QMessageBox.No, 
+            QMessageBox.No  # Default to No to prevent accidental clicks
+        )
+        
+        # If user confirms, show the hint
+        if reply == QMessageBox.Yes:
+            # Get hint content
+            hint_content = self.paths.get_hint_content(
+                self.current_module,
+                self.current_difficulty,
+                self.current_topic,
+                question_file
+            )
+            
+            if hint_content:
+                # Apply penalty based on difficulty level
+                hint_title = "Hint"
+                
+                if self.current_difficulty == "Intermediate":
+                    # Record one incorrect attempt
                     self.progress.record_attempt(
                         self.current_module,
                         self.current_difficulty,
@@ -1286,18 +1330,34 @@ class CTFApplication(QMainWindow):
                         question_file,
                         False
                     )
-                hint_title = "Hint (Counts as 3 incorrect attempts)"
+                    hint_title = "Hint (Counts as 1 incorrect attempt)"
+                elif self.current_difficulty == "Advanced":
+                    # Record three incorrect attempts
+                    for _ in range(3):
+                        self.progress.record_attempt(
+                            self.current_module,
+                            self.current_difficulty,
+                            self.current_topic,
+                            question_file,
+                            False
+                        )
+                    hint_title = "Hint (Counts as 3 incorrect attempts)"
+                
+                # Mark this hint as used so we don't penalize again
+                self.progress.mark_hint_used(
+                    self.current_module,
+                    self.current_difficulty,
+                    self.current_topic,
+                    question_file
+                )
+                
+                # Update accuracy display after applying penalty
+                self.update_accuracy_display()
+                
+                # Show hint in message box
+                QMessageBox.information(self, hint_title, hint_content)
             else:
-                # No penalty for Beginner
-                hint_title = "Hint"
-            
-            # Show hint in message box
-            QMessageBox.information(self, hint_title, hint_content)
-            
-            # Update accuracy display
-            self.update_accuracy_display()
-        else:
-            QMessageBox.information(self, "Hint", "No hint available for this question.")
+                QMessageBox.information(self, "Hint", "No hint available for this question.")
 
     def is_topic_completed(self, module, difficulty, topic):
         """

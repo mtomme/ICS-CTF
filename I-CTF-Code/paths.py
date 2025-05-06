@@ -470,7 +470,7 @@ class PathManager:
     
     def get_hint_content(self, module, difficulty, topic, question_file):
         """
-        Get hint content for a question with improved error handling.
+        Get hint content for a question with improved error handling and debugging.
         
         Args:
             module (str): The module name
@@ -484,34 +484,85 @@ class PathManager:
         # Remove PS_ prefix if present (for prompt-style questions)
         base_name = question_file.replace("PS_", "")
         
+        # Extract the question identifier (first letter or first part before underscore)
+        identifier = base_name.split('_')[0] if '_' in base_name else base_name[0]
+        
+        # Log the identifier we're looking for
+        logger.debug(f"Looking for hint with identifier: {identifier}")
+        
         # Get hints directory
         topic_path = self.get_topic_path(module, difficulty, topic)
         if not topic_path:
+            logger.warning(f"Invalid topic path for {module}/{difficulty}/{topic}")
             return None
             
         hints_dir = os.path.join(topic_path, "Hints")
         if not os.path.exists(hints_dir) or not os.path.isdir(hints_dir):
-            logger.debug(f"Hints directory not found for {module}/{difficulty}/{topic}")
+            logger.warning(f"Hints directory not found: {hints_dir}")
             return None
         
-        # Try different naming patterns for hint files
+        # Log the list of files in the hints directory to help with debugging
+        try:
+            hint_files = os.listdir(hints_dir)
+            logger.debug(f"Files in hints directory: {hint_files}")
+        except Exception as e:
+            logger.error(f"Error listing hints directory: {str(e)}")
+        
+        # Try different naming patterns for hint files with the identifier
         possible_patterns = [
-            base_name,                               # Same name
-            base_name.replace("Question", "Hint"),   # Standard naming
-            base_name + "_Hint.txt",                 # Simple suffix
-            base_name.split('_')[0] + "_Hint.txt"    # Identifier-based
+            f"{identifier}_*.txt",                      # Any file starting with identifier_
+            f"{identifier}*.txt",                       # Any file starting with identifier
+            f"*{identifier}_*.txt",                     # Any file containing _identifier_
+            f"*_{identifier}_*.txt",                    # Any file containing _identifier_
+            base_name,                                  # Exact match for question name
+            base_name.replace("Question", "Hint"),      # Standard naming
+            base_name + "_Hint.txt",                    # Simple suffix
+            identifier + "_Hint.txt",                   # Identifier-based
+            identifier + "_*.txt"                       # Any file starting with identifier_
         ]
         
-        # Check each pattern
-        for pattern in possible_patterns:
-            hint_path = os.path.join(hints_dir, pattern)
-            if os.path.exists(hint_path):
+        # Check for any matching files in the hints directory
+        matching_files = []
+        try:
+            for file in hint_files:
+                file_path = os.path.join(hints_dir, file)
+                if os.path.isfile(file_path) and file.startswith(identifier):
+                    matching_files.append(file)
+                    
+            logger.debug(f"Files matching identifier {identifier}: {matching_files}")
+            
+            # Try to read each matching file
+            for file in matching_files:
+                file_path = os.path.join(hints_dir, file)
                 try:
-                    with open(hint_path, 'r') as f:
-                        return f.read().strip()
+                    with open(file_path, 'r') as f:
+                        hint_content = f.read().strip()
+                        logger.debug(f"Loaded hint content from {file}")
+                        return hint_content
                 except Exception as e:
-                    logger.error(f"Error reading hint file {hint_path}: {str(e)}")
-                    continue
+                    logger.error(f"Error reading hint file {file_path}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error processing hint files: {str(e)}")
         
-        logger.debug(f"No hint file found for question: {question_file}")
+        # If no matching files were found, try to find using the patterns
+        for pattern in possible_patterns:
+            try:
+                import glob
+                matching_paths = glob.glob(os.path.join(hints_dir, pattern))
+                
+                if matching_paths:
+                    logger.debug(f"Found matching hint files using pattern {pattern}: {matching_paths}")
+                    
+                    for hint_path in matching_paths:
+                        try:
+                            with open(hint_path, 'r') as f:
+                                hint_content = f.read().strip()
+                                logger.debug(f"Loaded hint content from {hint_path}")
+                                return hint_content
+                        except Exception as e:
+                            logger.error(f"Error reading hint file {hint_path}: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error using pattern {pattern}: {str(e)}")
+        
+        logger.warning(f"No hint file found for question: {question_file} with identifier {identifier}")
         return None
